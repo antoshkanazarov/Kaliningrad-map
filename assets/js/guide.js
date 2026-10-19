@@ -2,6 +2,7 @@
 'use strict';
 const places=JSON.parse(document.getElementById('places-data').textContent);
 const byId=new Map(places.map(p=>[p.id,p]));
+const placeURL=id=>{const url=new URL(location.pathname,location.origin);url.hash='place-'+id;return url.href;};
 const core=places.filter(p=>p.group!=='extra'),extras=places.filter(p=>p.group==='extra');
 const cards=[...document.querySelectorAll('.place-card,.extra-card')];
 const search=document.getElementById('search'),filters=[...document.querySelectorAll('[data-filter]')],switches=[...document.querySelectorAll('[data-view]')],modes=[...document.querySelectorAll('[data-map-mode]')];
@@ -35,7 +36,15 @@ function renderMapList(){mapList.replaceChildren();for(const p of visiblePlaces(
 function regionBounds(){return L.geoJSON(KALININGRAD_BOUNDARY).getBounds();}
 function fitVisible(){if(!map||activeView!=='map')return;const visible=visiblePlaces();if(!visible.length){map.closePopup();return;}map.invalidateSize();const overview=mapMode!=='route'&&activeFilter==='all'&&activeInterest==='all'&&!search.value&&visitFilter==='all';map.fitBounds(overview?regionBounds():visible.map(p=>[p.lat,p.lng]),{paddingTopLeft:overview?[18,24]:[40,50],paddingBottomRight:overview?[18,48]:[45,75],maxZoom:overview?10:visible.length===1?13:12,animate:false});}
 function update(){searchClear.hidden=!search.value;const main=matching(core),extra=matching(extras),visible=visiblePlaces();const ids=new Set([...main,...extra].map(p=>p.id));cards.forEach(c=>c.hidden=c!==modalCard&&!ids.has(Number(c.dataset.id)));cardPanel.hidden=activeView!=='cards'||!main.length;extraSection.hidden=activeView!=='cards'||!extra.length;mapPanel.hidden=activeView!=='map';document.getElementById('extra-count').textContent=`${extra.length} из ${extras.length} дополнительных мест`;if(activeView==='map'){count.textContent=mapMode==='route'?`Мой маршрут: ${visible.length} из ${saved.length} мест`:mapMode==='main'?`Показано ${visible.length} из ${core.length} основных мест`:`Показано ${visible.length} из ${extras.length} дополнительных · ${contextPlaces().length} основных для ориентира`;empty.hidden=visible.length>0;}else{count.textContent=`Основные: ${main.length} из ${core.length} · дополнительные: ${extra.length} из ${extras.length}`;empty.hidden=main.length+extra.length>0;}document.getElementById('clear-filters').hidden=activeFilter==='all'&&activeInterest==='all'&&!search.value&&visitFilter==='all';interests.forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.interest===activeInterest)));filters.forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.filter===activeFilter)));modes.forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.mapMode===mapMode)));document.getElementById('map-help').textContent=mapMode==='route'?'Номера меток — порядок мест в вашем списке. Это выбранные остановки, а не рассчитанный дорожный маршрут.':mapMode==='main'?'На карте — только 10 основных мест. Синие метки обозначают город, зелёные — область. Нажмите на номер, чтобы открыть описание.':'Золотистые метки Д1–Д6 — дополнительные места. Основные отмечены небольшими серыми метками для ориентира; их тоже можно открыть.';document.getElementById('legend-main').hidden=mapMode!=='main';document.getElementById('legend-extra').hidden=mapMode!=='extra';document.getElementById('legend-route').hidden=mapMode!=='route';syncMarkers();renderMapList();fitVisible();renderFilterSummary();syncQuickNav();}
-function initMap(){if(map||typeof L==='undefined'){if(!map)showMessage('Карта недоступна. Откройте список мест и воспользуйтесь кнопками «Маршрут».');return;}
+async function initMap(){
+ if(map)return;
+ showMessage('Загружаем карту…');
+ try{await window.BaltikaRussianMap.loadLeaflet();}catch{
+  status.replaceChildren(document.createTextNode('Не удалось загрузить карту. Список мест остаётся доступен. '));status.hidden=false;
+  const retry=document.createElement('button');retry.type='button';retry.className='btn btn-outline';retry.textContent='Повторить загрузку';retry.addEventListener('click',initMap);status.append(retry);return;
+ }
+ if(map||activeView!=='map')return;
+
 map=L.map('map',{scrollWheelZoom:false,zoomControl:false,minZoom:6,maxBounds:regionBounds().pad(1),maxBoundsViscosity:.85}).setView([54.8,21.2],8);
 // Replace Leaflet's default flag-bearing prefix, retaining library attribution.
 map.attributionControl.setPrefix('<a href="https://leafletjs.com" target="_blank" rel="noopener noreferrer">Leaflet</a>');
@@ -48,10 +57,20 @@ L.polygon([outer,...rings],{pane:'regionFocus',stroke:false,fillColor:'#081c28',
 L.geoJSON(KALININGRAD_BOUNDARY,{pane:'regionFocus',interactive:false,style:{color:'#f3cd86',weight:3,opacity:1,fill:false,className:'region-boundary'}}).addTo(map);
 map.attributionControl.addAttribution('Границы: <a href="https://www.geoboundaries.org/" target="_blank" rel="noopener noreferrer">geoBoundaries</a> / <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OSM</a> (ODbL)');
 const regionKey=document.createElement('div');regionKey.className='region-map-key';regionKey.innerHTML='<span aria-hidden="true"></span>Калининградская область';document.querySelector('.map-area').append(regionKey);
-let errors=0,loaded=false;const tiles=L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}',{maxZoom:19,maxNativeZoom:19,attribution:'Tiles © Esri — Source: Esri, DeLorme, NAVTEQ, USGS, Intermap, iPC, NRCAN, Esri Japan, METI, Esri China (Hong Kong), Esri (Thailand), TomTom, 2012'});
-const timeout=setTimeout(()=>{if(!loaded)showMessage('Подложка карты пока не загрузилась. Проверьте интернет; ссылки на маршруты доступны в карточках мест.');},12000);tiles.on('tileerror',()=>{if(++errors>=3)showMessage('Не удалось загрузить часть карты. Проверьте интернет или откройте маршрут из карточки места.');});tiles.on('tileload',()=>{loaded=true;errors=0;clearTimeout(timeout);status.hidden=true;});tiles.addTo(map);
+function loadRussianBasemap(){
+ showMessage('Загружаем карту с русскими названиями…');
+ window.BaltikaRussianMap.addTo(map).then(gl=>{
+  status.hidden=true;
+  gl.on('error',()=>showMessage('Не удалось загрузить часть карты. Проверьте подключение к интернету.'));
+  gl.on('idle',()=>{status.hidden=true;});
+ }).catch(()=>{
+  status.replaceChildren(document.createTextNode('Не удалось загрузить подложку. Метки и список мест доступны. '));status.hidden=false;
+  const retry=document.createElement('button');retry.type='button';retry.className='btn btn-outline';retry.textContent='Повторить загрузку';retry.addEventListener('click',loadRussianBasemap);status.append(retry);
+ });
+}
+loadRussianBasemap();
 for(const p of places){const popup=document.createElement('div');const kind=document.createElement('p');kind.className='popup-kind';kind.textContent=(p.group==='extra'?'Дополнительное место · ':'Основное место · ')+badge(p);const heading=document.createElement('h3');heading.className='popup-title';heading.textContent=p.short;const desc=document.createElement('p');desc.className='popup-desc';desc.textContent=p.intro;const link=document.createElement('a');link.className='popup-link';link.href='#place-'+p.id;link.textContent='Открыть карточку →';link.addEventListener('click',e=>{e.preventDefault();showCard(p.id);});popup.append(kind,heading,desc,link);const marker=L.marker([p.lat,p.lng],{icon:iconFor(p),title:p.name,alt:p.name}).bindPopup(popup,{maxWidth:260,autoPanPadding:[20,30]});marker.on('click',()=>{selected=p.id;renderMapList();});markers.set(p.id,marker);}
-syncMarkers();if(typeof ResizeObserver!=='undefined')new ResizeObserver(()=>{if(activeView==='map'){map.invalidateSize();if(selected===null)fitVisible();}}).observe(document.getElementById('map'));
+syncMarkers();fitVisible();if(selected!==null){const p=byId.get(selected);map.setView([p.lat,p.lng],13,{animate:false});markers.get(selected)?.openPopup();}if(typeof ResizeObserver!=='undefined')new ResizeObserver(()=>{if(activeView==='map'){map.invalidateSize();if(selected===null)fitVisible();}}).observe(document.getElementById('map'));
 }
 function switchView(view){if(location.hash==='#my-route')history.replaceState(null,'',location.pathname+location.search+'#explore');activeView=view;switches.forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.view===view)));if(view==='map'){initMap();requestAnimationFrame(()=>{map?.invalidateSize();fitVisible();});}update();}
 function focusPlace(id,keepMode=false){const p=byId.get(id);if(!p)return;selected=id;if(!keepMode){mapMode=p.group==='extra'?'extra':'main';}if(activeView!=='map')switchView('map');else update();requestAnimationFrame(()=>{if(!map)return;map.invalidateSize();map.setView([p.lat,p.lng],13,{animate:false});markers.get(id)?.openPopup();});}
@@ -92,7 +111,7 @@ document.querySelectorAll('a[href="#my-route"]').forEach(a=>a.addEventListener('
 window.addEventListener('storage',e=>{if(e.key!==routeKey&&e.key!==null)return;undoRouteSnapshot=null;hideToast();try{const data=JSON.parse(localStorage.getItem(routeKey)||'[]');saved=Array.isArray(data)?[...new Set(data.filter(id=>Number.isInteger(id)&&byId.has(id)))]:[];renderRoute();if(activeView==='map')update();}catch(error){/* Ignore malformed external state. */}});
 async function sharePlace(button){
  const id=Number(button.dataset.shareId),p=byId.get(id);if(!p)return;
- const url='https://antoshkanazarov.github.io/Kaliningrad-map/#place-'+id;
+ const url=placeURL(id);
  const fallback=document.getElementById('share-fallback-'+id);fallback.hidden=true;
  if(navigator.share){try{await navigator.share({title:p.short+' — Балтика',text:'Посмотрите это место в нашем путеводителе',url});return;}catch(e){if(e.name==='AbortError')return;}}
  if(navigator.clipboard&&navigator.clipboard.writeText){try{await navigator.clipboard.writeText(url);button.textContent='✓ Ссылка скопирована';announce('Ссылка на '+p.short+' скопирована.');setTimeout(()=>{button.textContent='Поделиться ↗';},2500);return;}catch(e){/* A selectable link remains available without clipboard permission. */}}
@@ -114,7 +133,7 @@ function openPlace(id){
  card.querySelectorAll('details:not(.feedback-box)').forEach(d=>d.open=true);
  document.getElementById('place-dialog-label').textContent=card.querySelector('h3').textContent;
  lockedScroll=window.scrollY;document.body.style.position='fixed';document.body.style.top=-lockedScroll+'px';document.body.style.width='100%';
- placeDialog.classList.remove('expanded','reading');document.getElementById('reading-mode').setAttribute('aria-pressed','false');document.getElementById('reading-mode').textContent='Режим чтения';expandButton.setAttribute('aria-pressed','false');expandButton.textContent='⛶';expandButton.setAttribute('aria-label','Развернуть карточку');expandButton.title='Развернуть карточку';
+ placeDialog.classList.remove('expanded','reading');document.getElementById('reading-mode').setAttribute('aria-pressed','false');document.getElementById('reading-mode').textContent='Режим чтения';expandButton.setAttribute('aria-pressed','false');expandButton.innerHTML='<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M9 4H4v5M15 4h5v5M20 15v5h-5M4 15v5h5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>';expandButton.setAttribute('aria-label','Развернуть карточку');expandButton.title='Развернуть карточку';
  syncPlaceActions();hideToast();placeDialog.showModal();dialogContent.scrollTop=0;history.replaceState(null,'','#place-'+id);document.getElementById('place-close').focus();
 }
 function closePlace(restore=true){
@@ -122,7 +141,7 @@ function closePlace(restore=true){
  document.body.style.position='';document.body.style.top='';document.body.style.width='';window.scrollTo(0,lockedScroll);
  if(restore){history.replaceState(null,'',previousURL||location.pathname+location.search);update();if(returnFocus?.isConnected)returnFocus.focus({preventScroll:true});}
 }
-expandButton.addEventListener('click',()=>{const expanded=placeDialog.classList.toggle('expanded');expandButton.setAttribute('aria-pressed',String(expanded));expandButton.textContent='⛶';expandButton.setAttribute('aria-label',expanded?'Уменьшить карточку':'Развернуть карточку');expandButton.title=expanded?'Уменьшить карточку':'Развернуть карточку';});
+expandButton.addEventListener('click',()=>{const expanded=placeDialog.classList.toggle('expanded');expandButton.setAttribute('aria-pressed',String(expanded));expandButton.innerHTML='<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M9 4H4v5M15 4h5v5M20 15v5h-5M4 15v5h5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>';expandButton.setAttribute('aria-label',expanded?'Уменьшить карточку':'Развернуть карточку');expandButton.title=expanded?'Уменьшить карточку':'Развернуть карточку';});
 document.getElementById('place-close').addEventListener('click',()=>closePlace());
 placeDialog.addEventListener('cancel',e=>{e.preventDefault();closePlace();});
 placeDialog.addEventListener('click',e=>{if(e.target===placeDialog){const r=placeDialog.getBoundingClientRect();if(e.clientX<r.left||e.clientX>r.right||e.clientY<r.top||e.clientY>r.bottom)closePlace();}});
@@ -171,14 +190,14 @@ nearBtn.addEventListener('click',()=>{if(!navigator.geolocation){nearStatus.text
 document.getElementById('near-clear').addEventListener('click',()=>{geoRequest++;nearBtn.disabled=false;nearList.replaceChildren();nearStatus.textContent='Положение не сохраняется. Поиск запускается только по нажатию кнопки.';});
 const readButton=document.getElementById('reading-mode');
 readButton.addEventListener('click',()=>{const yes=placeDialog.classList.toggle('reading');readButton.setAttribute('aria-pressed',String(yes));readButton.textContent=yes?'Обычный вид':'Режим чтения';});
-function applySize(){placeDialog.style.setProperty('--reading-size',(readingSize/16)+'rem');document.getElementById('font-size').textContent=readingSize+' px';document.getElementById('font-down').disabled=readingSize===18;document.getElementById('font-up').disabled=readingSize===24;}
+function applySize(){placeDialog.style.setProperty('--reading-size',(readingSize/16)+'rem');document.getElementById('font-size').textContent=Math.round(readingSize/16*parseFloat(getComputedStyle(document.documentElement).fontSize))+' px';document.getElementById('font-down').disabled=readingSize===18;document.getElementById('font-up').disabled=readingSize===24;}
 for(const [id,delta]of [['font-down',-3],['font-up',3]])document.getElementById(id).addEventListener('click',()=>{readingSize=Math.min(24,Math.max(18,readingSize+delta));storeWrite('baltika-font-v1',readingSize);applySize();});
 function download(name,content,type='text/html;charset=utf-8'){const blob=new Blob([content],{type}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=name;document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),30000);}
-function exportPlace(id){const p=byId.get(id),card=document.getElementById('place-'+id),clone=card.querySelector('.place-story').cloneNode(true);clone.querySelectorAll('button,[data-tour-progress]').forEach(e=>e.remove());clone.querySelectorAll('[hidden]').forEach(e=>e.removeAttribute('hidden'));clone.querySelectorAll('[tabindex]').forEach(e=>e.removeAttribute('tabindex'));return `<article><h2>${esc(p.name)}</h2><p>${esc(p.address)} · ${esc(p.duration)}</p><p>${esc(p.intro)}</p>${card.querySelector('.visit-guide')?.outerHTML||''}${clone.innerHTML}<p><a href="https://antoshkanazarov.github.io/Kaliningrad-map/#place-${id}">Карточка на сайте</a></p></article>`;}
+function exportPlace(id){const p=byId.get(id),card=document.getElementById('place-'+id),clone=card.querySelector('.place-story').cloneNode(true);clone.querySelectorAll('button,[data-tour-progress]').forEach(e=>e.remove());clone.querySelectorAll('[hidden]').forEach(e=>e.removeAttribute('hidden'));clone.querySelectorAll('[tabindex]').forEach(e=>e.removeAttribute('tabindex'));return `<article><h2>${esc(p.name)}</h2><p>${esc(p.address)} · ${esc(p.duration)}</p><p>${esc(p.intro)}</p>${card.querySelector('.visit-guide')?.outerHTML||''}${clone.innerHTML}<p><a href="${esc(placeURL(id))}">Карточка на сайте</a></p></article>`;}
 function offlineDocument(title,body){return '<!doctype html><html lang="ru"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>'+esc(title)+'</title><style>body{max-width:48.75rem;margin:2rem auto;padding:0 1.25rem;font:1.125rem/1.75 system-ui;color:#173b43;background:#f6f4ed}h1,h2,h3,h4{line-height:1.25}article{border-top:0.0625rem solid #abbcb6;margin-top:2.25rem;padding-top:1.25rem}a{color:#215c68;overflow-wrap:anywhere}dt{font-weight:bold}dd{margin:0 0 0.875rem}button{display:none}@media print{body{background:white}article{break-before:page}}</style><h1>'+esc(title)+'</h1><p>Сохранено из путеводителя «Калининград и Балтика». Текст доступен без интернета. Внешние ссылки требуют подключения. Маршрут не рассчитывает дорогу. Сведения о посещении проверьте перед поездкой.</p>'+body+'</html>';}
 document.getElementById('download-route').addEventListener('click',()=>{if(!saved.length)return;download('baltika-my-route.html',offlineDocument('Мой маршрут',saved.map(exportPlace).join('')));announce('Файл маршрута подготовлен для скачивания.');});
 // Feedback prepares a message; it never claims a server received it.
-function feedbackFor(id){const form=document.getElementById('feedback-'+id),input=form.querySelector('textarea'),status=form.querySelector('[role=status]');const message=()=>{if(!input.value.trim()){status.textContent='Опишите, пожалуйста, неточность.';input.focus();return null;}return 'Неточность в путеводителе: '+byId.get(id).name+'\nhttps://antoshkanazarov.github.io/Kaliningrad-map/#place-'+id+'\n\n'+input.value.trim();};form.querySelector('[data-feedback-share]').addEventListener('click',async()=>{const text=message();if(!text)return;if(navigator.share){try{await navigator.share({title:'Неточность в путеводителе',text});status.textContent='Диалог отправки закрыт. Доставку проверяйте в выбранном приложении.';return;}catch(e){if(e.name==='AbortError'){status.textContent='Отправка отменена.';return;}}}try{await navigator.clipboard.writeText(text);status.textContent='Сообщение скопировано. Отправьте его команде проекта удобным способом.';}catch{const out=form.querySelector('[data-feedback-output]');out.hidden=false;out.value=text;out.focus();out.select();status.textContent='Скопируйте сообщение из поля и передайте команде проекта.';}});form.querySelector('[data-feedback-save]').addEventListener('click',()=>{const text=message();if(text){download('baltika-feedback-'+id+'.txt',text,'text/plain;charset=utf-8');status.textContent='Файл подготовлен. Его можно передать команде проекта.';}});}
+function feedbackFor(id){const form=document.getElementById('feedback-'+id),input=form.querySelector('textarea'),status=form.querySelector('[role=status]');const message=()=>{if(!input.value.trim()){status.textContent='Опишите, пожалуйста, неточность.';input.focus();return null;}return 'Неточность в путеводителе: '+byId.get(id).name+'\n'+placeURL(id)+'\n\n'+input.value.trim();};form.querySelector('[data-feedback-share]').addEventListener('click',async()=>{const text=message();if(!text)return;if(navigator.share){try{await navigator.share({title:'Неточность в путеводителе',text});status.textContent='Диалог отправки закрыт. Доставку проверяйте в выбранном приложении.';return;}catch(e){if(e.name==='AbortError'){status.textContent='Отправка отменена.';return;}}}try{await navigator.clipboard.writeText(text);status.textContent='Сообщение скопировано. Отправьте его команде проекта удобным способом.';}catch{const out=form.querySelector('[data-feedback-output]');out.hidden=false;out.value=text;out.focus();out.select();status.textContent='Скопируйте сообщение из поля и передайте команде проекта.';}});form.querySelector('[data-feedback-save]').addEventListener('click',()=>{const text=message();if(text){download('baltika-feedback-'+id+'.txt',text,'text/plain;charset=utf-8');status.textContent='Файл подготовлен. Его можно передать команде проекта.';}});}
 cards.forEach(card=>{const id=Number(card.dataset.id),open=card.querySelector('.open-place');const b=featureButton('',()=>setVisited(id));b.dataset.visitedId=id;b.setAttribute('aria-label','Отметить посещение: '+byId.get(id).short);open.after(b);const actions=document.createElement('div');actions.className='offline-actions';actions.append(featureButton('Скачать экскурсию',()=>{download('baltika-place-'+id+'.html',offlineDocument(byId.get(id).name,exportPlace(id)));announce('Экскурсия подготовлена для скачивания.');}));card.querySelector('.place-story').before(actions);feedbackFor(id);});
 // UX: keep the next action within reach, with recoverable route changes.
 const toast=document.getElementById('ux-toast'),toastMessage=document.getElementById('ux-toast-message'),undoButton=document.getElementById('undo-route');
@@ -210,7 +229,7 @@ function syncPlaceActions(){
 function syncRouteActions(){
  document.getElementById('route-start').hidden=!!saved.length;
  document.querySelector('[data-quick-nav="route"]').setAttribute('aria-label','Мой маршрут: '+saved.length+' мест');
- syncPlaceActions();
+ syncPlaceActions();tripTools.renderRoute(saved);
 }
 document.getElementById('place-save-action').addEventListener('click',()=>{if(modalCard)toggleSaved(Number(modalCard.dataset.id));});
 document.getElementById('place-map-action').addEventListener('click',()=>{
@@ -250,6 +269,11 @@ function renderFilterSummary(){
  if(previousKey){const next=[...filterSummary.children].find(b=>b.dataset.filterKey===previousKey)||filterSummary.firstElementChild||search;next.focus({preventScroll:true});}
 }
 
+const tripTools=window.BaltikaTrips.create({places,getSaved:()=>saved,onMessage:announce,onAdd(ids){
+ const added=ids.filter(id=>byId.has(id)&&!saved.includes(id));
+ if(!added.length){announce('Все эти места уже есть в вашем маршруте.');return;}
+ rememberRoute();saved.push(...added);changedRoute('Добавлено мест: '+added.length+'. Прежние остановки сохранены.');document.getElementById('route-panel').open=true;
+}});
 renderVisited();applySize();
 
 renderRoute();update();followHash();
