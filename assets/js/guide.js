@@ -32,24 +32,36 @@ function iconFor(p){const route=mapMode==='route';const context=mapMode==='extra
 function syncMarkers(){if(!map)return;const ids=new Set([...visiblePlaces(),...contextPlaces()].map(p=>p.id));for(const p of places){const marker=markers.get(p.id);if(!marker)continue;if(ids.has(p.id)){marker.setIcon(iconFor(p));marker.setZIndexOffset(p.group==='extra'?500:0);if(!map.hasLayer(marker))marker.addTo(map);}else if(map.hasLayer(marker))map.removeLayer(marker);}}
 function mapButton(p,context=false){const b=document.createElement('button');b.type='button';b.className='map-item '+(context?'context':p.group==='extra'?'extra':p.category);b.setAttribute('aria-pressed',String(selected===p.id));b.setAttribute('aria-label','Показать на карте: '+p.name+(context?' — основное место':''));const n=document.createElement('span');n.textContent=mapMode==='route'?String(saved.indexOf(p.id)+1):badge(p);const text=document.createElement('span');const title=document.createElement('strong');title.textContent=p.short;const sub=document.createElement('small');sub.textContent=(p.category==='city'?'Город':'Область')+' · '+p.duration;text.append(title,sub);b.append(n,text);b.addEventListener('click',()=>focusPlace(p.id,true));return b;}
 function renderMapList(){mapList.replaceChildren();for(const p of visiblePlaces())mapList.append(mapButton(p));const context=contextPlaces();if(context.length){const details=document.createElement('details');details.className='context-list';details.open=context.some(p=>p.id===selected);const summary=document.createElement('summary');summary.textContent=`Основные для ориентира · ${context.length}`;details.append(summary);context.forEach(p=>details.append(mapButton(p,true)));mapList.append(details);}}
-function fitVisible(){if(!map||activeView!=='map')return;const visible=visiblePlaces();if(!visible.length){map.closePopup();return;}map.invalidateSize();map.fitBounds(visible.map(p=>[p.lat,p.lng]),{paddingTopLeft:[40,50],paddingBottomRight:[45,75],maxZoom:visible.length===1?13:12,animate:false});}
-function update(){searchClear.hidden=!search.value;const main=matching(core),extra=matching(extras),visible=visiblePlaces();const ids=new Set([...main,...extra].map(p=>p.id));cards.forEach(c=>c.hidden=c!==modalCard&&!ids.has(Number(c.dataset.id)));cardPanel.hidden=activeView!=='cards'||!main.length;extraSection.hidden=activeView!=='cards'||!extra.length;mapPanel.hidden=activeView!=='map';document.getElementById('extra-count').textContent=`${extra.length} из ${extras.length} дополнительных мест`;if(activeView==='map'){count.textContent=mapMode==='route'?`Мой маршрут: ${visible.length} из ${saved.length} мест`:mapMode==='main'?`Показано ${visible.length} из ${core.length} основных мест`:`Показано ${visible.length} из ${extras.length} дополнительных · ${contextPlaces().length} основных для ориентира`;empty.hidden=visible.length>0;}else{count.textContent=`Основные: ${main.length} из ${core.length} · дополнительные: ${extra.length} из ${extras.length}`;empty.hidden=main.length+extra.length>0;}document.getElementById('clear-filters').hidden=activeFilter==='all'&&activeInterest==='all'&&!search.value&&visitFilter==='all';interests.forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.interest===activeInterest)));filters.forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.filter===activeFilter)));modes.forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.mapMode===mapMode)));document.getElementById('map-help').textContent=mapMode==='route'?'Номера меток — порядок мест в вашем списке. Это выбранные остановки, а не рассчитанный дорожный маршрут.':mapMode==='main'?'На карте — только 10 основных мест. Синие метки обозначают город, зелёные — область. Нажмите на номер, чтобы открыть описание.':'Золотистые метки Д1–Д6 — дополнительные места. Основные отмечены небольшими серыми метками для ориентира; их тоже можно открыть.';document.getElementById('legend-main').hidden=mapMode!=='main';document.getElementById('legend-extra').hidden=mapMode!=='extra';document.getElementById('legend-route').hidden=mapMode!=='route';syncMarkers();renderMapList();fitVisible();}
+function regionBounds(){return L.geoJSON(KALININGRAD_BOUNDARY).getBounds();}
+function fitVisible(){if(!map||activeView!=='map')return;const visible=visiblePlaces();if(!visible.length){map.closePopup();return;}map.invalidateSize();const overview=mapMode!=='route'&&activeFilter==='all'&&activeInterest==='all'&&!search.value&&visitFilter==='all';map.fitBounds(overview?regionBounds():visible.map(p=>[p.lat,p.lng]),{paddingTopLeft:overview?[18,24]:[40,50],paddingBottomRight:overview?[18,48]:[45,75],maxZoom:overview?10:visible.length===1?13:12,animate:false});}
+function update(){searchClear.hidden=!search.value;const main=matching(core),extra=matching(extras),visible=visiblePlaces();const ids=new Set([...main,...extra].map(p=>p.id));cards.forEach(c=>c.hidden=c!==modalCard&&!ids.has(Number(c.dataset.id)));cardPanel.hidden=activeView!=='cards'||!main.length;extraSection.hidden=activeView!=='cards'||!extra.length;mapPanel.hidden=activeView!=='map';document.getElementById('extra-count').textContent=`${extra.length} из ${extras.length} дополнительных мест`;if(activeView==='map'){count.textContent=mapMode==='route'?`Мой маршрут: ${visible.length} из ${saved.length} мест`:mapMode==='main'?`Показано ${visible.length} из ${core.length} основных мест`:`Показано ${visible.length} из ${extras.length} дополнительных · ${contextPlaces().length} основных для ориентира`;empty.hidden=visible.length>0;}else{count.textContent=`Основные: ${main.length} из ${core.length} · дополнительные: ${extra.length} из ${extras.length}`;empty.hidden=main.length+extra.length>0;}document.getElementById('clear-filters').hidden=activeFilter==='all'&&activeInterest==='all'&&!search.value&&visitFilter==='all';interests.forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.interest===activeInterest)));filters.forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.filter===activeFilter)));modes.forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.mapMode===mapMode)));document.getElementById('map-help').textContent=mapMode==='route'?'Номера меток — порядок мест в вашем списке. Это выбранные остановки, а не рассчитанный дорожный маршрут.':mapMode==='main'?'На карте — только 10 основных мест. Синие метки обозначают город, зелёные — область. Нажмите на номер, чтобы открыть описание.':'Золотистые метки Д1–Д6 — дополнительные места. Основные отмечены небольшими серыми метками для ориентира; их тоже можно открыть.';document.getElementById('legend-main').hidden=mapMode!=='main';document.getElementById('legend-extra').hidden=mapMode!=='extra';document.getElementById('legend-route').hidden=mapMode!=='route';syncMarkers();renderMapList();fitVisible();renderFilterSummary();syncQuickNav();}
 function initMap(){if(map||typeof L==='undefined'){if(!map)showMessage('Карта недоступна. Откройте список мест и воспользуйтесь кнопками «Маршрут».');return;}
-map=L.map('map',{scrollWheelZoom:false,zoomControl:false,minZoom:6}).setView([54.88,20.34],9);L.control.zoom({position:'bottomleft'}).addTo(map);
+map=L.map('map',{scrollWheelZoom:false,zoomControl:false,minZoom:6,maxBounds:regionBounds().pad(1),maxBoundsViscosity:.85}).setView([54.8,21.2],8);
+// Replace Leaflet's default flag-bearing prefix, retaining library attribution.
+map.attributionControl.setPrefix('<a href="https://leafletjs.com" target="_blank" rel="noopener noreferrer">Leaflet</a>');
+L.control.zoom({position:'bottomleft'}).addTo(map);
+map.createPane('regionFocus');map.getPane('regionFocus').style.zIndex=350;map.getPane('regionFocus').style.pointerEvents='none';
+// Even-odd fill leaves both mainland and the Baltic Spit unshaded.
+const outer=[[-85,-180],[-85,180],[85,180],[85,-180]];
+const rings=KALININGRAD_BOUNDARY.geometry.coordinates.flatMap(polygon=>polygon.map(ring=>ring.map(([lng,lat])=>[lat,lng])));
+L.polygon([outer,...rings],{pane:'regionFocus',stroke:false,fillColor:'#081c28',fillOpacity:.72,fillRule:'evenodd',interactive:false,className:'region-surround-mask'}).addTo(map);
+L.geoJSON(KALININGRAD_BOUNDARY,{pane:'regionFocus',interactive:false,style:{color:'#f3cd86',weight:3,opacity:1,fill:false,className:'region-boundary'}}).addTo(map);
+map.attributionControl.addAttribution('Границы: <a href="https://www.geoboundaries.org/" target="_blank" rel="noopener noreferrer">geoBoundaries</a> / <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OSM</a> (ODbL)');
+const regionKey=document.createElement('div');regionKey.className='region-map-key';regionKey.innerHTML='<span aria-hidden="true"></span>Калининградская область';document.querySelector('.map-area').append(regionKey);
 let errors=0,loaded=false;const tiles=L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}',{maxZoom:19,maxNativeZoom:19,attribution:'Tiles © Esri — Source: Esri, DeLorme, NAVTEQ, USGS, Intermap, iPC, NRCAN, Esri Japan, METI, Esri China (Hong Kong), Esri (Thailand), TomTom, 2012'});
 const timeout=setTimeout(()=>{if(!loaded)showMessage('Подложка карты пока не загрузилась. Проверьте интернет; ссылки на маршруты доступны в карточках мест.');},12000);tiles.on('tileerror',()=>{if(++errors>=3)showMessage('Не удалось загрузить часть карты. Проверьте интернет или откройте маршрут из карточки места.');});tiles.on('tileload',()=>{loaded=true;errors=0;clearTimeout(timeout);status.hidden=true;});tiles.addTo(map);
 for(const p of places){const popup=document.createElement('div');const kind=document.createElement('p');kind.className='popup-kind';kind.textContent=(p.group==='extra'?'Дополнительное место · ':'Основное место · ')+badge(p);const heading=document.createElement('h3');heading.className='popup-title';heading.textContent=p.short;const desc=document.createElement('p');desc.className='popup-desc';desc.textContent=p.intro;const link=document.createElement('a');link.className='popup-link';link.href='#place-'+p.id;link.textContent='Открыть карточку →';link.addEventListener('click',e=>{e.preventDefault();showCard(p.id);});popup.append(kind,heading,desc,link);const marker=L.marker([p.lat,p.lng],{icon:iconFor(p),title:p.name,alt:p.name}).bindPopup(popup,{maxWidth:260,autoPanPadding:[20,30]});marker.on('click',()=>{selected=p.id;renderMapList();});markers.set(p.id,marker);}
-syncMarkers();if(typeof ResizeObserver!=='undefined')new ResizeObserver(()=>{if(activeView==='map')map.invalidateSize();}).observe(document.getElementById('map'));
+syncMarkers();if(typeof ResizeObserver!=='undefined')new ResizeObserver(()=>{if(activeView==='map'){map.invalidateSize();if(selected===null)fitVisible();}}).observe(document.getElementById('map'));
 }
-function switchView(view){activeView=view;switches.forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.view===view)));if(view==='map'){initMap();requestAnimationFrame(()=>{map?.invalidateSize();fitVisible();});}update();}
+function switchView(view){if(location.hash==='#my-route')history.replaceState(null,'',location.pathname+location.search+'#explore');activeView=view;switches.forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.view===view)));if(view==='map'){initMap();requestAnimationFrame(()=>{map?.invalidateSize();fitVisible();});}update();}
 function focusPlace(id,keepMode=false){const p=byId.get(id);if(!p)return;selected=id;if(!keepMode){mapMode=p.group==='extra'?'extra':'main';}if(activeView!=='map')switchView('map');else update();requestAnimationFrame(()=>{if(!map)return;map.invalidateSize();map.setView([p.lat,p.lng],13,{animate:false});markers.get(id)?.openPopup();});}
 function showCard(id){openPlace(id);}
-filters.forEach(b=>b.addEventListener('click',()=>{activeFilter=b.dataset.filter;selected=null;map?.closePopup();update();}));search.addEventListener('input',()=>{selected=null;map?.closePopup();update();});switches.forEach(b=>b.addEventListener('click',()=>switchView(b.dataset.view)));modes.forEach(b=>b.addEventListener('click',()=>{mapMode=b.dataset.mapMode;if(mapMode==='route'){activeInterest='all';activeFilter='all';search.value='';}selected=null;map?.closePopup();update();}));
+filters.forEach(b=>b.addEventListener('click',()=>{activeFilter=b.dataset.filter;selected=null;map?.closePopup();update();}));search.addEventListener('input',()=>{selected=null;map?.closePopup();update();});switches.forEach(b=>b.addEventListener('click',()=>switchView(b.dataset.view)));modes.forEach(b=>b.addEventListener('click',()=>{mapMode=b.dataset.mapMode;if(mapMode==='route'){visitFilter='all';document.getElementById('visited-filter').value='all';activeInterest='all';activeFilter='all';search.value='';}selected=null;map?.closePopup();update();}));
 function reset(){visitFilter='all';document.getElementById('visited-filter').value='all';activeInterest='all';activeFilter='all';search.value='';selected=null;map?.closePopup();update();}
 document.getElementById('clear-filters').addEventListener('click',reset);document.getElementById('empty-reset').addEventListener('click',reset);document.getElementById('map-reset').addEventListener('click',reset);
 document.querySelectorAll('[data-map-id]').forEach(b=>b.addEventListener('click',()=>{if(modalCard)closePlace();activeInterest='all';activeFilter='all';search.value='';focusPlace(Number(b.dataset.mapId));document.getElementById('explore').scrollIntoView({behavior:reduceMotion?'auto':'smooth'});}));
 document.querySelectorAll('[data-open-map]').forEach(a=>a.addEventListener('click',()=>{selected=null;switchView('map');}));document.querySelectorAll('[data-open-card]').forEach(a=>a.addEventListener('click',e=>{e.preventDefault();showCard(Number(a.dataset.openCard));}));document.getElementById('start-trip').addEventListener('click',()=>{mapMode='main';switchView('cards');});
-function announce(text){document.getElementById('planner-status').textContent=text;}
+function announce(text,canUndo=false){showToast(text,canUndo);}
 function persist(){try{localStorage.setItem(routeKey,JSON.stringify(saved));storageOK=true;}catch(e){storageOK=false;}}
 function routeButton(label,action,id,text){const b=document.createElement('button');b.type='button';b.className='route-control';b.dataset.routeAction=action;b.dataset.routeId=id;b.setAttribute('aria-label',label);b.textContent=text;return b;}
 function renderRoute(){
@@ -64,19 +76,20 @@ function renderRoute(){
  const mode=document.querySelector('[data-map-mode=route]');mode.disabled=!saved.length;mode.textContent='Мой маршрут · '+saved.length;
  document.getElementById('route-storage').textContent=storageOK?'Список сохраняется в этом браузере на этом устройстве.':'Браузер не разрешил сохранение. Список доступен до закрытия страницы.';
  if(!saved.length&&mapMode==='route')mapMode='main';
+ syncRouteActions();
 }
-function changedRoute(message){persist();renderRoute();if(activeView==='map')update();announce(message);}
-function toggleSaved(id){if(!byId.has(id))return;const at=saved.indexOf(id);if(at<0)saved.push(id);else saved.splice(at,1);changedRoute(byId.get(id).short+(at<0?' — добавлено в маршрут.':' — удалено из маршрута.'));}
+function changedRoute(message){persist();renderRoute();if(activeView==='map')update();announce(storageOK?message:message+' Браузер не разрешил сохранение: список доступен до закрытия страницы.',!!undoRouteSnapshot);}
+function toggleSaved(id){if(!byId.has(id))return;rememberRoute();const at=saved.indexOf(id);if(at<0)saved.push(id);else saved.splice(at,1);changedRoute(byId.get(id).short+(at<0?' — добавлено в маршрут.':' — удалено из маршрута.'));}
 interests.forEach(b=>b.addEventListener('click',()=>{activeInterest=b.dataset.interest;selected=null;map?.closePopup();update();}));
 document.querySelectorAll('[data-save-id]').forEach(b=>b.addEventListener('click',()=>toggleSaved(Number(b.dataset.saveId))));
 document.getElementById('route-list').addEventListener('click',e=>{const b=e.target.closest('[data-route-action]');if(!b)return;const id=Number(b.dataset.routeId),action=b.dataset.routeAction,index=saved.indexOf(id);if(index<0)return;
  if(action==='open'){showCard(id);return;}
- if(action==='remove'){saved.splice(index,1);changedRoute(byId.get(id).short+' — удалено из маршрута.');const next=document.querySelectorAll('#route-list .route-name')[Math.min(index,saved.length-1)];(next||document.getElementById('route-summary')).focus();return;}
- const next=index+(action==='up'?-1:1);if(next<0||next>=saved.length)return;[saved[index],saved[next]]=[saved[next],saved[index]];changedRoute('Порядок остановок изменён.');const focus=document.querySelector(`[data-route-action="${action}"][data-route-id="${id}"]`);if(focus&&!focus.disabled)focus.focus();else document.querySelector(`[data-route-action="open"][data-route-id="${id}"]`).focus();
+ if(action==='remove'){rememberRoute();saved.splice(index,1);changedRoute(byId.get(id).short+' — удалено из маршрута.');const next=document.querySelectorAll('#route-list .route-name')[Math.min(index,saved.length-1)];(next||document.getElementById('route-summary')).focus();return;}
+ const next=index+(action==='up'?-1:1);if(next<0||next>=saved.length)return;rememberRoute();[saved[index],saved[next]]=[saved[next],saved[index]];changedRoute('Порядок остановок изменён.');const focus=document.querySelector(`[data-route-action="${action}"][data-route-id="${id}"]`);if(focus&&!focus.disabled)focus.focus();else document.querySelector(`[data-route-action="open"][data-route-id="${id}"]`).focus();
 });
-document.getElementById('route-map').addEventListener('click',()=>{activeFilter='all';activeInterest='all';search.value='';mapMode='route';selected=null;switchView('map');document.getElementById('explore').scrollIntoView({behavior:reduceMotion?'auto':'smooth'});});
+document.getElementById('route-map').addEventListener('click',()=>{visitFilter='all';document.getElementById('visited-filter').value='all';activeFilter='all';activeInterest='all';search.value='';mapMode='route';selected=null;switchView('map');document.getElementById('explore').scrollIntoView({behavior:reduceMotion?'auto':'smooth'});});
 document.querySelectorAll('a[href="#my-route"]').forEach(a=>a.addEventListener('click',()=>{document.getElementById('route-panel').open=true;}));
-window.addEventListener('storage',e=>{if(e.key!==routeKey&&e.key!==null)return;try{const data=JSON.parse(e.newValue||'[]');saved=Array.isArray(data)?[...new Set(data.filter(id=>Number.isInteger(id)&&byId.has(id)))]:[];renderRoute();if(activeView==='map')update();}catch(error){/* Ignore malformed external state. */}});
+window.addEventListener('storage',e=>{if(e.key!==routeKey&&e.key!==null)return;undoRouteSnapshot=null;hideToast();try{const data=JSON.parse(localStorage.getItem(routeKey)||'[]');saved=Array.isArray(data)?[...new Set(data.filter(id=>Number.isInteger(id)&&byId.has(id)))]:[];renderRoute();if(activeView==='map')update();}catch(error){/* Ignore malformed external state. */}});
 async function sharePlace(button){
  const id=Number(button.dataset.shareId),p=byId.get(id);if(!p)return;
  const url='https://antoshkanazarov.github.io/Kaliningrad-map/#place-'+id;
@@ -102,10 +115,10 @@ function openPlace(id){
  document.getElementById('place-dialog-label').textContent=card.querySelector('h3').textContent;
  lockedScroll=window.scrollY;document.body.style.position='fixed';document.body.style.top=-lockedScroll+'px';document.body.style.width='100%';
  placeDialog.classList.remove('expanded','reading');document.getElementById('reading-mode').setAttribute('aria-pressed','false');document.getElementById('reading-mode').textContent='Режим чтения';expandButton.setAttribute('aria-pressed','false');expandButton.textContent='⛶';expandButton.setAttribute('aria-label','Развернуть карточку');expandButton.title='Развернуть карточку';
- placeDialog.showModal();dialogContent.scrollTop=0;history.replaceState(null,'','#place-'+id);document.getElementById('place-close').focus();
+ syncPlaceActions();hideToast();placeDialog.showModal();dialogContent.scrollTop=0;history.replaceState(null,'','#place-'+id);document.getElementById('place-close').focus();
 }
 function closePlace(restore=true){
- if(!modalCard)return;placeDialog.close();modalCard.querySelectorAll('details').forEach(d=>d.open=false);modalSlot.replaceWith(modalCard);modalCard=null;modalSlot=null;
+ if(!modalCard)return;hideToast();document.body.append(toast);placeDialog.close();modalCard.querySelectorAll('details').forEach(d=>d.open=false);modalSlot.replaceWith(modalCard);modalCard=null;modalSlot=null;
  document.body.style.position='';document.body.style.top='';document.body.style.width='';window.scrollTo(0,lockedScroll);
  if(restore){history.replaceState(null,'',previousURL||location.pathname+location.search);update();if(returnFocus?.isConnected)returnFocus.focus({preventScroll:true});}
 }
@@ -115,7 +128,7 @@ placeDialog.addEventListener('cancel',e=>{e.preventDefault();closePlace();});
 placeDialog.addEventListener('click',e=>{if(e.target===placeDialog){const r=placeDialog.getBoundingClientRect();if(e.clientX<r.left||e.clientX>r.right||e.clientY<r.top||e.clientY>r.bottom)closePlace();}});
 document.querySelectorAll('.place-card,.extra-card').forEach(card=>{
  const id=Number(card.dataset.id);
- const trigger=document.createElement('button');trigger.type='button';trigger.className='btn btn-outline open-place js-only';trigger.textContent='⛶ Открыть карточку';trigger.setAttribute('aria-label','Открыть карточку: '+card.querySelector('h3').textContent);trigger.addEventListener('click',()=>openPlace(id));card.querySelector('.card-intro,.extra-intro').after(trigger);
+ const trigger=document.createElement('button');trigger.type='button';trigger.className='btn btn-outline open-place js-only';trigger.textContent='Подробнее о месте';trigger.setAttribute('aria-label','Открыть карточку: '+card.querySelector('h3').textContent);trigger.addEventListener('click',()=>openPlace(id));card.querySelector('.card-intro,.extra-intro').after(trigger);
  card.addEventListener('click',e=>{if(card===modalCard||e.target.closest('a,button,input,label,details'))return;if(window.getSelection()?.toString())return;openPlace(id);});
  card.querySelector('summary')?.addEventListener('click',e=>{if(card!==modalCard){e.preventDefault();openPlace(id);}});
 });
@@ -146,7 +159,7 @@ const presets=[
 const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 function featureButton(label,action){const b=document.createElement('button');b.type='button';b.className='btn btn-outline';b.textContent=label;b.addEventListener('click',action);return b;}
 const presetGrid=document.getElementById('preset-grid');
-presets.forEach((r,i)=>{const a=document.createElement('article');a.className='day';a.innerHTML=`<p class="day-label">${esc(r.travel)} · ${esc(r.time)}</p><h3>${esc(r.title)}</h3><ol class="preset-stops">${r.ids.map(id=>`<li><button type="button" data-preset-place="${id}">${esc(byId.get(id).short)}</button></li>`).join('')}</ol><p>${esc(r.note)}</p>`;const b=featureButton('Добавить остановки',()=>{const added=r.ids.filter(id=>!saved.includes(id));saved.push(...added);changedRoute(added.length?'Добавлено остановок: '+added.length+'. Ваш прежний список сохранён.':'Все остановки уже в вашем маршруте.');document.getElementById('preset-status').textContent=added.length?'Добавлено: '+added.length+'. Остановки добавлены в конец вашего маршрута.':'Эти места уже есть в вашем маршруте.';document.getElementById('route-panel').open=true;});b.dataset.preset=i;a.append(b);a.querySelectorAll('[data-preset-place]').forEach(x=>x.addEventListener('click',()=>openPlace(Number(x.dataset.presetPlace))));presetGrid.append(a);});
+presets.forEach((r,i)=>{const a=document.createElement('article');a.className='day';a.innerHTML=`<p class="day-label">${esc(r.travel)} · ${esc(r.time)}</p><h3>${esc(r.title)}</h3><ol class="preset-stops">${r.ids.map(id=>`<li><button type="button" data-preset-place="${id}">${esc(byId.get(id).short)}</button></li>`).join('')}</ol><p>${esc(r.note)}</p>`;const b=featureButton('Добавить остановки',()=>{const added=r.ids.filter(id=>!saved.includes(id));if(added.length)rememberRoute();else undoRouteSnapshot=null;saved.push(...added);changedRoute(added.length?'Добавлено остановок: '+added.length+'. Ваш прежний список сохранён.':'Все остановки уже в вашем маршруте.');document.getElementById('preset-status').textContent=added.length?'Добавлено: '+added.length+'. Остановки добавлены в конец вашего маршрута.':'Эти места уже есть в вашем маршруте.';document.getElementById('route-panel').open=true;});b.dataset.preset=i;a.append(b);a.querySelectorAll('[data-preset-place]').forEach(x=>x.addEventListener('click',()=>openPlace(Number(x.dataset.presetPlace))));presetGrid.append(a);});
 document.querySelectorAll('[data-day-choice]').forEach(b=>b.addEventListener('click',()=>{reset();const v=b.dataset.dayChoice;if(v==='city')activeFilter='city';else activeInterest=v;switchView('cards');document.getElementById('explore').scrollIntoView({behavior:reduceMotion?'auto':'smooth'});document.getElementById('search').focus({preventScroll:true});}));
 function renderVisited(){document.getElementById('visited-progress').textContent='Вы посетили '+visited.size+' из '+places.length+' мест';document.querySelectorAll('[data-visited-id]').forEach(b=>{const yes=visited.has(Number(b.dataset.visitedId));b.textContent=yes?'✓ Здесь были':'Я здесь был(а)';b.setAttribute('aria-pressed',String(yes));});cards.forEach(c=>c.classList.toggle('was-visited',visited.has(Number(c.dataset.id))));}
 function setVisited(id){if(visited.has(id))visited.delete(id);else visited.add(id);const ok=storeWrite(visitedKey,[...visited]);renderVisited();update();announce(ok?'Отметка посещения сохранена.':'Отметка действует до закрытия страницы: браузер не разрешил сохранение.');}
@@ -167,6 +180,76 @@ document.getElementById('download-route').addEventListener('click',()=>{if(!save
 // Feedback prepares a message; it never claims a server received it.
 function feedbackFor(id){const form=document.getElementById('feedback-'+id),input=form.querySelector('textarea'),status=form.querySelector('[role=status]');const message=()=>{if(!input.value.trim()){status.textContent='Опишите, пожалуйста, неточность.';input.focus();return null;}return 'Неточность в путеводителе: '+byId.get(id).name+'\nhttps://antoshkanazarov.github.io/Kaliningrad-map/#place-'+id+'\n\n'+input.value.trim();};form.querySelector('[data-feedback-share]').addEventListener('click',async()=>{const text=message();if(!text)return;if(navigator.share){try{await navigator.share({title:'Неточность в путеводителе',text});status.textContent='Диалог отправки закрыт. Доставку проверяйте в выбранном приложении.';return;}catch(e){if(e.name==='AbortError'){status.textContent='Отправка отменена.';return;}}}try{await navigator.clipboard.writeText(text);status.textContent='Сообщение скопировано. Отправьте его команде проекта удобным способом.';}catch{const out=form.querySelector('[data-feedback-output]');out.hidden=false;out.value=text;out.focus();out.select();status.textContent='Скопируйте сообщение из поля и передайте команде проекта.';}});form.querySelector('[data-feedback-save]').addEventListener('click',()=>{const text=message();if(text){download('baltika-feedback-'+id+'.txt',text,'text/plain;charset=utf-8');status.textContent='Файл подготовлен. Его можно передать команде проекта.';}});}
 cards.forEach(card=>{const id=Number(card.dataset.id),open=card.querySelector('.open-place');const b=featureButton('',()=>setVisited(id));b.dataset.visitedId=id;b.setAttribute('aria-label','Отметить посещение: '+byId.get(id).short);open.after(b);const actions=document.createElement('div');actions.className='offline-actions';actions.append(featureButton('Скачать экскурсию',()=>{download('baltika-place-'+id+'.html',offlineDocument(byId.get(id).name,exportPlace(id)));announce('Экскурсия подготовлена для скачивания.');}));card.querySelector('.place-story').before(actions);feedbackFor(id);});
+// UX: keep the next action within reach, with recoverable route changes.
+const toast=document.getElementById('ux-toast'),toastMessage=document.getElementById('ux-toast-message'),undoButton=document.getElementById('undo-route');
+let undoRouteSnapshot=null,toastTimer=null,toastReturnFocus=null;
+function rememberRoute(){undoRouteSnapshot=[...saved];}
+function hideToast(){clearTimeout(toastTimer);toast.hidden=true;}
+function showToast(text,canUndo=false){
+ clearTimeout(toastTimer);
+ if(!toast.contains(document.activeElement))toastReturnFocus=document.activeElement;
+ const host=placeDialog.open?placeDialog:document.body;if(toast.parentElement!==host)host.append(toast);
+ toast.hidden=false;toastMessage.textContent=text;undoButton.hidden=!canUndo;
+ // Actionable notices remain available until dismissed or superseded.
+ if(!canUndo)toastTimer=setTimeout(()=>{if(!toast.contains(document.activeElement)&&!toast.matches(':hover'))hideToast();},7000);
+}
+function restoreToastFocus(){const target=toastReturnFocus?.isConnected&&toastReturnFocus.getClientRects().length?toastReturnFocus:placeDialog.open?document.getElementById('place-save-action'):document.getElementById('route-summary');target.focus({preventScroll:true});}
+document.getElementById('dismiss-toast').addEventListener('click',()=>{hideToast();restoreToastFocus();});
+undoButton.addEventListener('click',()=>{
+ if(!undoRouteSnapshot)return;
+ saved=[...undoRouteSnapshot];undoRouteSnapshot=null;persist();renderRoute();update();
+ announce(storageOK?'Последнее изменение маршрута отменено.':'Изменение отменено. Список доступен до закрытия страницы.');
+ restoreToastFocus();
+});
+function syncPlaceActions(){
+ if(!modalCard)return;const id=Number(modalCard.dataset.id),p=byId.get(id),yes=saved.includes(id);
+ document.getElementById('place-action-duration').textContent=p.duration+' · '+(p.category==='city'?'Калининград':'Область');
+ document.getElementById('place-action-state').textContent=yes?'Место в вашем маршруте':'Сохраните место для поездки';
+ const button=document.getElementById('place-save-action');button.textContent=yes?'✓ В маршруте':'＋ В маршрут';button.setAttribute('aria-pressed',String(yes));button.setAttribute('aria-label',(yes?'Убрать из маршрута: ':'Добавить в маршрут: ')+p.short);
+}
+function syncRouteActions(){
+ document.getElementById('route-start').hidden=!!saved.length;
+ document.querySelector('[data-quick-nav="route"]').setAttribute('aria-label','Мой маршрут: '+saved.length+' мест');
+ syncPlaceActions();
+}
+document.getElementById('place-save-action').addEventListener('click',()=>{if(modalCard)toggleSaved(Number(modalCard.dataset.id));});
+document.getElementById('place-map-action').addEventListener('click',()=>{
+ if(!modalCard)return;const id=Number(modalCard.dataset.id);closePlace();reset();focusPlace(id);
+ document.getElementById('explore').scrollIntoView({behavior:reduceMotion?'auto':'smooth'});
+ document.querySelector('[data-view="map"]').focus({preventScroll:true});
+});
+function syncQuickNav(){
+ const inRoute=location.hash==='#my-route'&&document.getElementById('route-panel').open;
+ document.querySelectorAll('[data-quick-nav]').forEach(b=>{const yes=inRoute?b.dataset.quickNav==='route':b.dataset.quickNav===(activeView==='map'?'map':'places');if(yes)b.setAttribute('aria-current','true');else b.removeAttribute('aria-current');});
+}
+document.querySelectorAll('[data-quick-nav]').forEach(b=>b.addEventListener('click',()=>{
+ if(modalCard)closePlace();hideToast();
+ if(b.dataset.quickNav==='route'){
+  document.getElementById('route-panel').open=true;history.replaceState(null,'','#my-route');document.getElementById('my-route').scrollIntoView({behavior:reduceMotion?'auto':'smooth'});document.getElementById('route-summary').focus({preventScroll:true});syncQuickNav();return;
+ }
+ if(location.hash==='#my-route')history.replaceState(null,'',location.pathname+location.search+'#explore');
+ switchView(b.dataset.quickNav==='map'?'map':'cards');document.getElementById('explore').scrollIntoView({behavior:reduceMotion?'auto':'smooth'});document.querySelector('[data-view="'+(activeView==='map'?'map':'cards')+'"]').focus({preventScroll:true});
+}));
+document.getElementById('route-panel').addEventListener('toggle',syncQuickNav);
+document.getElementById('route-start').addEventListener('click',()=>{switchView('cards');search.focus({preventScroll:true});});
+window.addEventListener('hashchange',syncQuickNav);
+const refinements=document.getElementById('catalog-refinements'),compactFilters=matchMedia('(max-width:43.75rem)');
+function adaptRefinements(){if(!compactFilters.matches||!refinements.contains(document.activeElement))refinements.open=!compactFilters.matches;}
+adaptRefinements();compactFilters.addEventListener('change',adaptRefinements);
+const filterSummary=document.getElementById('active-filters');
+function renderFilterSummary(){
+ const previousKey=filterSummary.contains(document.activeElement)?document.activeElement.dataset.filterKey:null;
+ filterSummary.replaceChildren();
+ const add=(key,label,clear)=>{const b=document.createElement('button');b.type='button';b.className='filter-chip';b.dataset.filterKey=key;b.textContent=label+' ×';b.setAttribute('aria-label','Снять фильтр: '+label);b.addEventListener('click',()=>{clear();selected=null;map?.closePopup();update();});filterSummary.append(b);};
+ if(search.value)add('search','Поиск: '+search.value,()=>search.value='');
+ if(activeFilter!=='all')add('area',activeFilter==='city'?'Калининград':'Область',()=>activeFilter='all');
+ if(activeInterest!=='all')add('interest',interests.find(b=>b.dataset.interest===activeInterest).textContent,()=>activeInterest='all');
+ if(visitFilter!=='all')add('visited',visitFilter==='visited'?'Уже посещённые':'Ещё не посещённые',()=>{visitFilter='all';document.getElementById('visited-filter').value='all';});
+ filterSummary.hidden=!filterSummary.childElementCount;
+ const refinementCount=Number(activeInterest!=='all')+Number(visitFilter!=='all');document.getElementById('refinement-count').textContent=refinementCount?'Выбрано: '+refinementCount:'';
+ if(previousKey){const next=[...filterSummary.children].find(b=>b.dataset.filterKey===previousKey)||filterSummary.firstElementChild||search;next.focus({preventScroll:true});}
+}
+
 renderVisited();applySize();
 
 renderRoute();update();followHash();

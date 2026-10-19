@@ -147,3 +147,9 @@ body{
 .search-clear:hover{background:#e9eeea}
 textarea:focus-visible,select:focus-visible{outline:.1875rem solid #bf812b;outline-offset:.25rem}
 @media print{body,.ideas,.site-footer{background-image:none}}
+
+/* Region focus overlay stays below markers and ignores pointer input. */
+.region-map-key{position:absolute;top:.875rem;left:.875rem;z-index:450;display:flex;align-items:center;gap:.5rem;max-width:calc(100% - 1.75rem);padding:.5rem .875rem;border:1px solid #e6c48a80;border-radius:2rem;background:#102b35ed;color:#fff3db;font-size:.75rem;line-height:1.4;pointer-events:none;box-shadow:0 .25rem 1rem #061a2433}
+.region-map-key span{width:.625rem;height:.625rem;border:2px solid #f3cd86;border-radius:50%;flex-shrink:0}
+.map-status{z-index:460;top:3.75rem}
+.region-boundary{filter:drop-shadow(0 0 2px #102b3580)}
